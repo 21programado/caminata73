@@ -157,19 +157,50 @@
       }
     }
 
-    async function tryAutoLoadCSV() {
-      const candidates = ['direcciones.csv', 'direcciones_optimizadas.csv', 'datos.csv'];
-      for (const fileName of candidates) {
+async function tryAutoLoadCSV() {
+      const badge = document.getElementById('loading-badge');
+      badge.classList.remove('hidden');
+      badge.innerText = "Cargando bases de datos de calles...";
+
+      const fileParts = ['direcciones_parte1.csv', 'direcciones_parte2.csv'];
+      let combinedData = [];
+      let successCount = 0;
+
+      for (const fileName of fileParts) {
         try {
           const response = await fetch(fileName);
           if (response.ok) {
             const csvText = await response.text();
-            processCSVData(csvText, fileName);
-            return;
+            
+            // Parsear de forma síncrona/prometida cada parte
+            await new Promise((resolve) => {
+              Papa.parse(csvText, {
+                header: true,
+                dynamicTyping: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                  const valid = results.data.filter(row => row.latitud && row.longitud);
+                  combinedData = combinedData.concat(valid);
+                  successCount++;
+                  resolve();
+                }
+              });
+            });
           }
-        } catch (e) {}
+        } catch (e) {
+          console.log(`No se pudo cargar ${fileName}`);
+        }
       }
-      document.getElementById('sub-header').innerText = "Sube tu archivo CSV para comenzar.";
+
+      badge.classList.add('hidden');
+
+      if (successCount > 0) {
+        allData = combinedData;
+        document.getElementById('sub-header').innerText = `Montevideo peatonal (${allData.length} puntos)`;
+        renderMarkers(allData);
+      } else {
+        document.getElementById('sub-header').innerText = "Sube tus archivos CSV para comenzar.";
+      }
     }
 
     function processCSVData(csvText, sourceName) {
