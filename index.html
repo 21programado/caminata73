@@ -42,10 +42,14 @@
       </label>
     </div>
 
-    <!-- Buscador flexible -->
-    <div class="flex gap-2">
-      <input type="text" id="search-input" placeholder="Ej: bulevar, 6413, 12900..." 
+    <!-- Buscador flexible con autocompletado nativo -->
+    <div class="flex gap-2 relative">
+      <input type="text" id="search-input" list="calles-list" placeholder="Ej: bulevar, 6413..." 
              class="w-full px-3 py-2 text-xs bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+      
+      <!-- Lista desplegable dinámica de sugerencias -->
+      <datalist id="calles-list"></datalist>
+
       <button id="btn-search" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-semibold transition shrink-0">
         Buscar
       </button>
@@ -88,9 +92,33 @@
     let userMarker = null;
     let userCoords = [-34.88, -56.16]; 
     let routeLineLayer = null;
+	
+    // Sugerencias dinámicas mientras el usuario escribe
+    document.getElementById('search-input').addEventListener('input', function(e) {
+      const term = e.target.value.trim().toLowerCase();
+      const datalist = document.getElementById('calles-list');
+      
+      if (term.length < 2) {
+        datalist.innerHTML = '';
+        return;
+      }
+
+      const matches = allData.filter(row => {
+        const via = (row.nombre_via || '').toLowerCase();
+        return via.includes(term);
+      });
+
+      const uniqueNames = [...new Set(matches.map(row => row.nombre_via))].slice(0, 15);
+
+      datalist.innerHTML = '';
+      uniqueNames.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        datalist.appendChild(option);
+      });
+    });
 
     function initMap() {
-      // Registrar Service Worker para PWA
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js')
           .then(() => console.log('Service Worker registrado con éxito.'))
@@ -157,7 +185,7 @@
       }
     }
 
-async function tryAutoLoadCSV() {
+    async function tryAutoLoadCSV() {
       const badge = document.getElementById('loading-badge');
       badge.classList.remove('hidden');
       badge.innerText = "Cargando bases de datos de calles...";
@@ -172,7 +200,6 @@ async function tryAutoLoadCSV() {
           if (response.ok) {
             const csvText = await response.text();
             
-            // Parsear de forma síncrona/prometida cada parte
             await new Promise((resolve) => {
               Papa.parse(csvText, {
                 header: true,
@@ -281,7 +308,6 @@ async function tryAutoLoadCSV() {
           routeLineLayer = L.polyline(coords, { color: '#34d399', weight: 6, opacity: 0.9, dashArray: '5, 10' }).addTo(map);
           map.fitBounds(routeLineLayer.getBounds(), { padding: [80, 80] });
 
-          // Cálculo humano: ~4.8 km/h (80 metros por minuto)
           const velocidadMetrosPorMinuto = 80;
           const minutosEstimados = Math.round(route.distance / velocidadMetrosPorMinuto);
 
@@ -299,32 +325,96 @@ async function tryAutoLoadCSV() {
       }
     }
 
+    // BÚSQUEDA INTELIGENTE CON SELECCIÓN DE PUNTO MÁS CERCANO AL USUARIO
     function performSearch() {
       const rawTerm = document.getElementById('search-input').value.trim();
       if (!rawTerm) {
         renderMarkers(allData);
+        if (routeLineLayer) {
+          map.removeLayer(routeLineLayer);
+          routeLineLayer = null;
+        }
+        document.getElementById('route-panel').classList.add('hidden');
         return;
       }
       
-      const term = rawTerm.toLowerCase();
+      let nombreCalleBuscado = rawTerm;
+      let numeroPuertaBuscado = null;
+
+      // Detectar si el usuario escribió un número al final (ej: "8 de Octubre 2500")
+      const partes = rawTerm.split(/[\s,]+/);
+      const posibleNumero = partes[partes.length - 1];
+      
+      if (!isNaN(posibleNumero) && posibleNumero.length > 0 && partes.length > 1) {
+        numeroPuertaBuscado = posibleNumero;
+        partes.pop();
+        nombreCalleBuscado = partes.join(' ');
+      }
+
+      // Filtrar filas por texto general
       const filtered = allData.filter(row => {
         const text = `${row.nombre_via || ''} ${row.num_puerta || ''} ${row.codigo_postal || ''} ${row.localidad || ''}`.toLowerCase();
-        return text.includes(term);
+        return text.includes(rawTerm.toLowerCase());
       });
 
-      renderMarkers(filtered);
-
-      if (filtered.length > 0) {
-        const target = filtered[0];
-        const lat = parseFloat(target.latitud);
-        const lon = parseFloat(target.longitud);
-
-        if (!isNaN(lat) && !isNaN(lon)) {
-          calculateWalkingRoute(lat, lon, `${target.nombre_via || 'Destino'} #${target.num_puerta || ''}`);
-        }
-      } else {
-        alert("No se encontraron coincidencias.");
+      let coincidenciasCalle = filtered;
+      if (coincidenciasCalle.length === 0 && numeroPuertaBuscado) {
+        coincidenciasCalle = allData.filter(row => {
+          const via = (row.nombre_via || '').toLowerCase();
+          return via.includes(nombreCalleBuscado.toLowerCase());
+        });
       }
+
+      if (filtered.length === 0 && coincidenciasCalle.length === 0) {
+        alert("No se encontraron coincidencias.");
+        return;
+      }
+
+      const datosParaMostrar = filtered.length > 0 ? filtered : coincidenciasCalle;
+      renderMarkers(datosParaMostrar);
+
+      let destinoFinal = null;
+
+      // Si hay número de puerta específico, buscamos esa coincidencia exacta
+      if (numeroPuertaBuscado) {
+        destinoFinal = datosParaMostrar.find(row => String(row.num_puerta) === String(numeroPuertaBuscado));
+      }
+
+      // Si NO hay número (o se buscó solo la calle), elegimos el punto más cercano a ti
+      if (!destinoFinal) {
+        if (!userCoords || userCoords.length !== 2) {
+          destinoFinal = datosParaMostrar[0];
+        } else {
+          let menorDistancia = Infinity;
+          datosParaMostrar.forEach(row => {
+            const distancia = calcularDistanciaMetros(userCoords[0], userCoords[1], row.latitud, row.longitud);
+            if (distancia < menorDistancia) {
+              menorDistancia = distancia;
+              destinoFinal = row;
+            }
+          });
+        }
+      }
+
+      if (destinoFinal) {
+        const lat = parseFloat(destinoFinal.latitud);
+        const lon = parseFloat(destinoFinal.longitud);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          calculateWalkingRoute(lat, lon, `${destinoFinal.nombre_via || 'Destino'} #${destinoFinal.num_puerta || ''}`);
+        }
+      }
+    }
+
+    // Cálculo matemático rápido de distancia en metros (Haversine)
+    function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
+      const R = 6371e3;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
     }
 
     document.getElementById('btn-clear-route').addEventListener('click', () => {
