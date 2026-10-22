@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ruteador-peatonal-v1';
+const CACHE_NAME = 'ruteador-peatonal-v2';
 const assetsToCache = [
   './index.html',
   './manifest.json',
