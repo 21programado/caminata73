@@ -42,17 +42,19 @@
       </label>
     </div>
 
-    <!-- Buscador flexible con autocompletado nativo -->
-    <div class="flex gap-2 relative">
-      <input type="text" id="search-input" list="calles-list" placeholder="Ej: bulevar, 6413..." 
-             class="w-full px-3 py-2 text-xs bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
-      
-      <!-- Lista desplegable dinámica de sugerencias -->
-      <datalist id="calles-list"></datalist>
+    <!-- Buscador flexible con autocompletado universal (Infalible en Android) -->
+    <div class="relative">
+      <div class="flex gap-2">
+        <input type="text" id="search-input" autocomplete="off" placeholder="Ej: bulevar, 6413..." 
+               class="w-full px-3 py-2 text-xs bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        
+        <button id="btn-search" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-semibold transition shrink-0">
+          Buscar
+        </button>
+      </div>
 
-      <button id="btn-search" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-semibold transition shrink-0">
-        Buscar
-      </button>
+      <!-- Contenedor desplegable personalizado para sugerencias (Compatible con Android) -->
+      <div id="suggestions-box" class="absolute left-0 right-14 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl max-h-48 overflow-y-auto z-[1100] hidden"></div>
     </div>
 
     <!-- Botón Mi GPS -->
@@ -93,13 +95,14 @@
     let userCoords = [-34.88, -56.16]; 
     let routeLineLayer = null;
 	
-    // Sugerencias dinámicas mientras el usuario escribe
+    // Sugerencias dinámicas universales (Infalible en Android y PC)
     document.getElementById('search-input').addEventListener('input', function(e) {
       const term = e.target.value.trim().toLowerCase();
-      const datalist = document.getElementById('calles-list');
+      const box = document.getElementById('suggestions-box');
       
       if (term.length < 2) {
-        datalist.innerHTML = '';
+        box.innerHTML = '';
+        box.classList.add('hidden');
         return;
       }
 
@@ -110,12 +113,37 @@
 
       const uniqueNames = [...new Set(matches.map(row => row.nombre_via))].slice(0, 15);
 
-      datalist.innerHTML = '';
+      if (uniqueNames.length === 0) {
+        box.innerHTML = '';
+        box.classList.add('hidden');
+        return;
+      }
+
+      box.innerHTML = '';
       uniqueNames.forEach(name => {
-        const option = document.createElement('option');
-        option.value = name;
-        datalist.appendChild(option);
+        const div = document.createElement('div');
+        div.className = 'px-3 py-2 text-xs text-slate-200 hover:bg-emerald-600 hover:text-white cursor-pointer border-b border-slate-700/50 last:border-none';
+        div.innerText = name;
+        
+        // Al hacer clic en una sugerencia, se autocompleta y ejecuta la búsqueda
+        div.addEventListener('click', () => {
+          document.getElementById('search-input').value = name;
+          box.innerHTML = '';
+          box.classList.add('hidden');
+          performSearch();
+        });
+
+        box.appendChild(div);
       });
+
+      box.classList.remove('hidden');
+    });
+
+    // Ocultar sugerencias si se hace clic fuera del buscador
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#search-input') && !e.target.closest('#suggestions-box')) {
+        document.getElementById('suggestions-box').classList.add('hidden');
+      }
     });
 
     function initMap() {
@@ -328,6 +356,10 @@
     // BÚSQUEDA INTELIGENTE CON SELECCIÓN DE PUNTO MÁS CERCANO AL USUARIO
     function performSearch() {
       const rawTerm = document.getElementById('search-input').value.trim();
+      
+      // Ocultar el panel de sugerencias al buscar
+      document.getElementById('suggestions-box').classList.add('hidden');
+
       if (!rawTerm) {
         renderMarkers(allData);
         if (routeLineLayer) {
@@ -341,7 +373,6 @@
       let nombreCalleBuscado = rawTerm;
       let numeroPuertaBuscado = null;
 
-      // Detectar si el usuario escribió un número al final (ej: "8 de Octubre 2500")
       const partes = rawTerm.split(/[\s,]+/);
       const posibleNumero = partes[partes.length - 1];
       
@@ -351,7 +382,6 @@
         nombreCalleBuscado = partes.join(' ');
       }
 
-      // Filtrar filas por texto general
       const filtered = allData.filter(row => {
         const text = `${row.nombre_via || ''} ${row.num_puerta || ''} ${row.codigo_postal || ''} ${row.localidad || ''}`.toLowerCase();
         return text.includes(rawTerm.toLowerCase());
@@ -375,12 +405,10 @@
 
       let destinoFinal = null;
 
-      // Si hay número de puerta específico, buscamos esa coincidencia exacta
       if (numeroPuertaBuscado) {
         destinoFinal = datosParaMostrar.find(row => String(row.num_puerta) === String(numeroPuertaBuscado));
       }
 
-      // Si NO hay número (o se buscó solo la calle), elegimos el punto más cercano a ti
       if (!destinoFinal) {
         if (!userCoords || userCoords.length !== 2) {
           destinoFinal = datosParaMostrar[0];
@@ -405,7 +433,6 @@
       }
     }
 
-    // Cálculo matemático rápido de distancia en metros (Haversine)
     function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
       const R = 6371e3;
       const dLat = (lat2 - lat1) * Math.PI / 180;
