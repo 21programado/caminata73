@@ -4,33 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ruteador Peatonal Urbano</title>
-  
-  <!-- Configuración PWA -->
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#10b981">
   <link rel="apple-touch-icon" href="icon-192.png">
-
-  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <!-- Leaflet MarkerCluster CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
-  <!-- Papa Parse -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
   <style>
     #map { height: 100vh; width: 100vw; }
+    #suggestions-box { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   </style>
 </head>
 <body class="bg-slate-900 h-screen w-screen overflow-hidden font-sans text-slate-100">
 
-  <!-- Mapa a Pantalla Completa -->
   <div id="map" class="z-0"></div>
 
-  <!-- Panel Flotante de Búsqueda y Control -->
-  <div class="absolute top-4 left-4 z-[1000] w-80 sm:w-96 bg-slate-900/90 backdrop-blur-md p-4 rounded-xl border border-slate-700 shadow-2xl space-y-3">
-    
+  <div id="panel" class="absolute top-4 left-4 z-[1000] w-80 sm:w-96 bg-slate-900/90 backdrop-blur-md p-4 rounded-xl border border-slate-700 shadow-2xl space-y-3">
+
     <div class="flex justify-between items-center border-b border-slate-700 pb-2">
       <div>
         <h1 class="font-bold text-sm text-emerald-400">Ruteador Peatonal 🚶</h1>
@@ -42,28 +34,21 @@
       </label>
     </div>
 
-    <!-- Buscador flexible con contenedor de sugerencias optimizado para Android y PC -->
     <div class="relative">
       <div class="flex gap-2">
-        <input type="text" id="search-input" autocomplete="off" placeholder="Ej: 8 de Octubre, 2500..." 
-               class="w-full px-3 py-2 text-xs bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
-        
-        <button id="btn-search" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-semibold transition shrink-0">
-          Buscar
-        </button>
+        <input type="text" id="search-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"
+               placeholder="Ej: 8 de Octubre, 2500..."
+               class="w-full px-3 py-2 text-base sm:text-xs bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        <button id="btn-search" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-semibold transition shrink-0">Buscar</button>
       </div>
-
-      <!-- Contenedor desplegable optimizado (Ancho completo para evitar ocultarse en móviles) -->
-      <div id="suggestions-box" class="absolute left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl max-h-48 overflow-y-auto z-[9999] hidden"></div>
+      <div id="suggestions-box" class="absolute left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl max-h-56 overflow-y-auto z-[9999] hidden"></div>
     </div>
 
-    <!-- Botón Mi GPS -->
     <button id="btn-gps" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold py-2 rounded-lg shadow transition flex items-center justify-center gap-2">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
       <span>Actualizar Mi GPS</span>
     </button>
 
-    <!-- Resumen de Ruta Activa a Pie -->
     <div id="route-panel" class="hidden pt-2 border-t border-slate-700 text-xs space-y-1.5">
       <div class="font-bold text-emerald-400 flex justify-between items-center">
         <span>Ruta Peatonal Activa</span>
@@ -77,96 +62,108 @@
     </div>
   </div>
 
-  <!-- Indicador de Carga Flotante -->
-  <div id="loading-badge" class="absolute bottom-6 left-6 bg-slate-900/90 backdrop-blur text-white px-4 py-2 rounded-lg text-xs shadow-lg z-[1000] hidden border border-slate-700">
-    Procesando...
-  </div>
+  <div id="loading-badge" class="absolute bottom-6 left-6 bg-slate-900/90 backdrop-blur text-white px-4 py-2 rounded-lg text-xs shadow-lg z-[1000] hidden border border-slate-700">Procesando...</div>
 
-  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- Leaflet MarkerCluster JS -->
   <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
-  
+
   <script>
-    let map = null;
-    let markersCluster = null;
-    let allData = [];
-    let userMarker = null;
-    let userCoords = [-34.88, -56.16]; 
-    let routeLineLayer = null;
-	
-    // Sugerencias dinámicas universales con soporte táctil (Android/PC)
-    document.getElementById('search-input').addEventListener('input', function(e) {
-      const term = e.target.value.trim().toLowerCase();
-      const box = document.getElementById('suggestions-box');
-      
-      if (term.length < 2) {
-        box.innerHTML = '';
-        box.classList.add('hidden');
-        return;
+    let map, markersCluster, userMarker, routeLineLayer;
+    let allData = [];        // filas ya limpias (con lat/lon numéricos y nombre normalizado)
+    let streetIndex = [];    // calles únicas: { n: nombre normalizado, name: nombre original }
+    let userCoords = [-34.88, -56.16];
+
+    const $ = id => document.getElementById(id);
+    const input = $('search-input');
+    const box = $('suggestions-box');
+
+    // Minúsculas y sin tildes, para que "ocho"/"Óscar" etc. coincidan sin importar acentos
+    const norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    // ---------- Preparación de datos (una sola vez) ----------
+    function prepareData(rows) {
+      const names = new Map();
+      const clean = [];
+      for (const r of rows) {
+        const lat = parseFloat(r.latitud), lon = parseFloat(r.longitud);
+        if (isNaN(lat) || isNaN(lon)) continue;
+        r.lat = lat; r.lon = lon;
+        r.via = String(r.nombre_via ?? '').trim();   // String() evita el error si el CSV trae nombres numéricos
+        r.viaN = norm(r.via);
+        if (r.via && !names.has(r.viaN)) names.set(r.viaN, r.via);
+        clean.push(r);
       }
+      allData = clean;
+      streetIndex = [...names].map(([n, name]) => ({ n, name }));
+    }
 
-      const matches = allData.filter(row => {
-        const via = (row.nombre_via || '').toLowerCase();
-        return via.includes(term);
-      });
+    function parseQuery(raw) {
+      const parts = raw.trim().split(/[\s,]+/);
+      const last = parts[parts.length - 1];
+      if (parts.length > 1 && /^\d+$/.test(last)) return { street: parts.slice(0, -1).join(' '), number: last };
+      return { street: raw.trim(), number: null };
+    }
 
-      const uniqueNames = [...new Set(matches.map(row => row.nombre_via))].slice(0, 15);
-
-      if (uniqueNames.length === 0) {
-        box.innerHTML = '';
-        box.classList.add('hidden');
-        return;
+    // ---------- Sugerencias ----------
+    function getSuggestions(term) {
+      const t = norm(term);
+      if (t.length < 2) return [];
+      const starts = [], wordStarts = [], inside = [];
+      for (const s of streetIndex) {
+        const i = s.n.indexOf(t);
+        if (i === 0) starts.push(s.name);
+        else if (i > 0) (s.n[i - 1] === ' ' ? wordStarts : inside).push(s.name);
       }
+      return starts.concat(wordStarts, inside).slice(0, 15);
+    }
 
-      box.innerHTML = '';
-      uniqueNames.forEach(name => {
-        const div = document.createElement('div');
-        div.className = 'px-3 py-2.5 text-xs text-slate-200 hover:bg-emerald-600 hover:text-white cursor-pointer border-b border-slate-700/50 last:border-none';
-        div.innerText = name;
-        
-        // Manejador unificado para PC (click) y Android (touchend)
-        const seleccionarSugerencia = (ev) => {
-          ev.preventDefault();
-          document.getElementById('search-input').value = name;
-          box.innerHTML = '';
-          box.classList.add('hidden');
-          performSearch();
-        };
+    function hideSuggestions() { box.classList.add('hidden'); box.innerHTML = ''; }
 
-        div.addEventListener('click', seleccionarSugerencia);
-        div.addEventListener('touchend', seleccionarSugerencia);
-
-        box.appendChild(div);
-      });
-
+    function showSuggestions() {
+      const raw = input.value;
+      let list = getSuggestions(raw);
+      if (!list.length) list = getSuggestions(parseQuery(raw).street); // por si ya escribió el número
+      if (!list.length) return hideSuggestions();
+      box.innerHTML = list.map(n =>
+        `<div class="sug px-3 py-3 text-sm sm:text-xs text-slate-200 active:bg-emerald-600 hover:bg-emerald-600 hover:text-white cursor-pointer border-b border-slate-700/50 last:border-none" data-name="${esc(n)}">${esc(n)}</div>`
+      ).join('');
       box.classList.remove('hidden');
+    }
+
+    let debounce;
+    input.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(showSuggestions, 120); });
+    input.addEventListener('focus', () => { if (input.value.trim().length >= 2) showSuggestions(); });
+
+    // Un solo evento "click" sirve para mouse y toque (sin touchend, que se disparaba al hacer scroll en la lista)
+    box.addEventListener('click', e => {
+      const el = e.target.closest('.sug');
+      if (!el) return;
+      input.value = el.dataset.name;
+      hideSuggestions();
+      input.blur();            // cierra el teclado en el celular
+      performSearch();
     });
 
-    // Ocultar sugerencias si se hace clic fuera del buscador
-    document.addEventListener('click', (e) => {
-      if (!e.target.closest('#search-input') && !e.target.closest('#suggestions-box')) {
-        document.getElementById('suggestions-box').classList.add('hidden');
-      }
+    document.addEventListener('click', e => {
+      if (!e.target.closest('#search-input') && !e.target.closest('#suggestions-box')) hideSuggestions();
     });
 
+    // ---------- Mapa ----------
     function initMap() {
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js')
-          .then(() => console.log('Service Worker registrado con éxito.'))
-          .catch(err => console.log('Error al registrar Service Worker:', err));
+        navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW:', err));
       }
 
-      const osmStandard = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap contributors'
+      map = L.map('map', {
+        center: userCoords, zoom: 13,
+        layers: [L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' })]
       });
 
-      map = L.map('map', {
-        center: userCoords,
-        zoom: 13,
-        layers: [osmStandard]
-      });
+      // Evita que los toques/arrastres/scroll sobre el panel muevan el mapa (clave en celular)
+      const panel = $('panel');
+      L.DomEvent.disableClickPropagation(panel);
+      L.DomEvent.disableScrollPropagation(panel);
 
       markersCluster = L.markerClusterGroup({ chunkedLoading: true });
       map.addLayer(markersCluster);
@@ -174,24 +171,17 @@
       const userIcon = L.icon({
         iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
         shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41]
+        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
       });
 
-      userMarker = L.marker(userCoords, { draggable: true, icon: userIcon, title: "Tu posición (Arrastrable)" }).addTo(map);
-      userMarker.bindPopup("<b>Tu posición de partida</b><br>Arrastra este marcador o haz clic derecho en el mapa para moverlo.");
+      userMarker = L.marker(userCoords, { draggable: true, icon: userIcon, title: 'Tu posición (arrastrable)' }).addTo(map);
+      userMarker.bindPopup('<b>Tu posición de partida</b><br>Arrastra este marcador o haz clic derecho en el mapa para moverlo.');
+      userMarker.on('dragend', e => { const p = e.target.getLatLng(); userCoords = [p.lat, p.lng]; });
 
-      userMarker.on('dragend', function(e) {
-        const pos = e.target.getLatLng();
-        userCoords = [pos.lat, pos.lng];
-      });
-
-      map.on('contextmenu', function(e) {
+      map.on('contextmenu', e => {
         userCoords = [e.latlng.lat, e.latlng.lng];
         userMarker.setLatLng(userCoords);
-        userMarker.bindPopup("<b>Partida ajustada manualmente</b>").openPopup();
+        userMarker.bindPopup('<b>Partida ajustada manualmente</b>').openPopup();
       });
 
       getGPSLocation(false);
@@ -199,154 +189,95 @@
     }
 
     function getGPSLocation(showAlerts = true) {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          position => {
-            userCoords = [position.coords.latitude, position.coords.longitude];
-            userMarker.setLatLng(userCoords);
-            map.setView(userCoords, 16);
-            userMarker.bindPopup("<b>¡Ubicación GPS actual detectada!</b>").openPopup();
-          },
-          error => {
-            if (showAlerts) alert("No se pudo obtener el GPS.");
-          },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
-      } else if (showAlerts) {
-        alert("Tu dispositivo no admite geolocalización.");
-      }
+      if (!navigator.geolocation) { if (showAlerts) alert('Tu dispositivo no admite geolocalización.'); return; }
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          userCoords = [pos.coords.latitude, pos.coords.longitude];
+          userMarker.setLatLng(userCoords);
+          map.setView(userCoords, 16);
+          userMarker.bindPopup('<b>¡Ubicación GPS actual detectada!</b>').openPopup();
+        },
+        () => { if (showAlerts) alert('No se pudo obtener el GPS.'); },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
+
+    // ---------- Carga de CSV ----------
+    function parseCSV(text) {
+      return new Promise(resolve => Papa.parse(text, {
+        header: true, skipEmptyLines: true,   // sin dynamicTyping: así nombre_via siempre es texto
+        complete: r => resolve(r.data)
+      }));
     }
 
     async function tryAutoLoadCSV() {
-      const badge = document.getElementById('loading-badge');
+      const badge = $('loading-badge');
       badge.classList.remove('hidden');
-      badge.innerText = "Cargando bases de datos de calles...";
-
-      const fileParts = ['direcciones_parte1.csv', 'direcciones_parte2.csv'];
-      let combinedData = [];
-      let successCount = 0;
-
-      for (const fileName of fileParts) {
+      badge.innerText = 'Cargando bases de datos de calles...';
+      let rows = [], ok = 0;
+      for (const f of ['direcciones_parte1.csv', 'direcciones_parte2.csv']) {
         try {
-          const response = await fetch(fileName);
-          if (response.ok) {
-            const csvText = await response.text();
-            
-            await new Promise((resolve) => {
-              Papa.parse(csvText, {
-                header: true,
-                dynamicTyping: true,
-                skipEmptyLines: true,
-                complete: function(results) {
-                  const valid = results.data.filter(row => row.latitud && row.longitud);
-                  combinedData = combinedData.concat(valid);
-                  successCount++;
-                  resolve();
-                }
-              });
-            });
-          }
-        } catch (e) {
-          console.log(`No se pudo cargar ${fileName}`);
-        }
+          const res = await fetch(f);
+          if (res.ok) { rows = rows.concat(await parseCSV(await res.text())); ok++; }
+        } catch (e) { console.log('No se pudo cargar ' + f); }
       }
-
       badge.classList.add('hidden');
-
-      if (successCount > 0) {
-        allData = combinedData;
-        document.getElementById('sub-header').innerText = `Montevideo peatonal (${allData.length} puntos)`;
+      if (ok > 0) {
+        prepareData(rows);
+        $('sub-header').innerText = `Montevideo peatonal (${allData.length} puntos)`;
         renderMarkers(allData);
       } else {
-        document.getElementById('sub-header').innerText = "Sube tus archivos CSV para comenzar.";
+        $('sub-header').innerText = 'Sube tus archivos CSV para comenzar.';
       }
     }
 
-    function processCSVData(csvText, sourceName) {
-      const badge = document.getElementById('loading-badge');
+    async function processCSVData(text, name) {
+      const badge = $('loading-badge');
       badge.classList.remove('hidden');
-      badge.innerText = "Cargando direcciones...";
-
-      setTimeout(() => {
-        Papa.parse(csvText, {
-          header: true,
-          dynamicTyping: true,
-          skipEmptyLines: true,
-          complete: function(results) {
-            allData = results.data.filter(row => row.latitud && row.longitud);
-            document.getElementById('sub-header').innerText = `${sourceName} (${allData.length} puntos)`;
-            badge.classList.add('hidden');
-            renderMarkers(allData);
-          }
-        });
-      }, 50);
+      badge.innerText = 'Cargando direcciones...';
+      prepareData(await parseCSV(text));
+      $('sub-header').innerText = `${name} (${allData.length} puntos)`;
+      badge.classList.add('hidden');
+      renderMarkers(allData);
     }
 
+    // ---------- Marcadores ----------
     function renderMarkers(data) {
       markersCluster.clearLayers();
-      if (data.length === 0) return;
-
-      const markersToAdd = [];
-
-      data.forEach(row => {
-        const lat = parseFloat(row.latitud);
-        const lon = parseFloat(row.longitud);
-        if (isNaN(lat) || isNaN(lon)) return;
-
-        const marker = L.marker([lat, lon]);
-
-        marker.bindPopup(`
+      const list = data.map(r => {
+        const label = `${r.via || 'Destino'} #${r.num_puerta || ''}`;
+        return L.marker([r.lat, r.lon]).bindPopup(`
           <div class="text-xs leading-relaxed font-sans min-w-[200px] text-slate-800">
-            <div class="font-bold text-sm border-b pb-1 mb-2 border-slate-200">
-              ${row.nombre_via || 'Vía'} #${row.num_puerta || 'S/N'}
-            </div>
-            <div><b>Localidad:</b> ${row.localidad || 'N/A'}</div>
-            <div><b>CP:</b> ${row.codigo_postal || 'N/A'}</div>
-            <button onclick="calculateWalkingRoute(${lat}, ${lon}, '${row.nombre_via || 'Destino'} #${row.num_puerta || ''}')" 
-                    class="mt-3 w-full bg-emerald-600 text-white font-semibold py-1.5 px-2 rounded hover:bg-emerald-500 transition">
-              Caminar hacia aquí 🚶
-            </button>
-          </div>
-        `);
-
-        markersToAdd.push(marker);
+            <div class="font-bold text-sm border-b pb-1 mb-2 border-slate-200">${esc(r.via || 'Vía')} #${esc(r.num_puerta || 'S/N')}</div>
+            <div><b>Localidad:</b> ${esc(r.localidad || 'N/A')}</div>
+            <div><b>CP:</b> ${esc(r.codigo_postal || 'N/A')}</div>
+            <button data-n="${esc(label)}" onclick="calculateWalkingRoute(${r.lat}, ${r.lon}, this.dataset.n)"
+                    class="mt-3 w-full bg-emerald-600 text-white font-semibold py-1.5 px-2 rounded hover:bg-emerald-500 transition">Caminar hacia aquí 🚶</button>
+          </div>`);
       });
-
-      markersCluster.addLayers(markersToAdd);
+      markersCluster.addLayers(list);
     }
 
-    // Ruta OSRM perfil peatonal ('foot')
+    // ---------- Ruta peatonal ----------
+    // Nota: router.project-osrm.org solo calcula rutas en auto aunque se pida "foot".
+    // Este servidor de OpenStreetMap Alemania sí tiene perfil peatonal real.
     async function calculateWalkingRoute(destLat, destLon, destName) {
-      const badge = document.getElementById('loading-badge');
+      const badge = $('loading-badge');
       badge.classList.remove('hidden');
-      badge.innerText = "Calculando ruta a pie...";
-
-      const startLon = userCoords[1];
-      const startLat = userCoords[0];
-      const osrmUrl = `https://router.project-osrm.org/route/v1/foot/${startLon},${startLat};${destLon},${destLat}?overview=full&geometries=geojson`;
-
+      badge.innerText = 'Calculando ruta a pie...';
+      const url = `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${userCoords[1]},${userCoords[0]};${destLon},${destLat}?overview=full&geometries=geojson`;
       try {
-        const response = await fetch(osrmUrl);
-        const data = await response.json();
-
-        if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+        const data = await (await fetch(url)).json();
+        if (data.code === 'Ok' && data.routes && data.routes.length) {
           const route = data.routes[0];
-          const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
-
-          if (routeLineLayer) {
-            map.removeLayer(routeLineLayer);
-          }
-
-          routeLineLayer = L.polyline(coords, { color: '#34d399', weight: 6, opacity: 0.9, dashArray: '5, 10' }).addTo(map);
+          if (routeLineLayer) map.removeLayer(routeLineLayer);
+          routeLineLayer = L.polyline(route.geometry.coordinates.map(c => [c[1], c[0]]),
+            { color: '#34d399', weight: 6, opacity: 0.9, dashArray: '5, 10' }).addTo(map);
           map.fitBounds(routeLineLayer.getBounds(), { padding: [80, 80] });
-
-          const velocidadMetrosPorMinuto = 80;
-          const minutosEstimados = Math.round(route.distance / velocidadMetrosPorMinuto);
-
-          document.getElementById('route-panel').classList.remove('hidden');
-          document.getElementById('route-dist').innerText = (route.distance / 1000).toFixed(2) + ' km';
-          document.getElementById('route-time').innerText = minutosEstimados + ' min';
-          document.getElementById('route-dest-name').innerText = `Destino: ${destName}`;
+          $('route-panel').classList.remove('hidden');
+          $('route-dist').innerText = (route.distance / 1000).toFixed(2) + ' km';
+          $('route-time').innerText = Math.max(1, Math.round(route.distance / 80)) + ' min';   // ~4,8 km/h
+          $('route-dest-name').innerText = `Destino: ${destName}`;
         } else {
           alert('No se encontró una ruta peatonal conectada.');
         }
@@ -357,124 +288,64 @@
       }
     }
 
-    // BÚSQUEDA INTELIGENTE CON COINCIDENCIA EXACTA DE CALLE Y CÁLCULO DE PUNTO MÁS CERCANO
+    function clearRoute() {
+      if (routeLineLayer) { map.removeLayer(routeLineLayer); routeLineLayer = null; }
+      $('route-panel').classList.add('hidden');
+    }
+
+    function distanciaMetros(lat1, lon1, lat2, lon2) {
+      const R = 6371e3, rad = Math.PI / 180;
+      const dLat = (lat2 - lat1) * rad, dLon = (lon2 - lon1) * rad;
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    // ---------- Búsqueda ----------
+    function filterStreet(q) {
+      let m = allData.filter(r => r.viaN === q);                       // coincidencia exacta primero
+      return m.length ? m : allData.filter(r => r.viaN.includes(q));   // si no, parcial
+    }
+
     function performSearch() {
-      const rawTerm = document.getElementById('search-input').value.trim();
-      
-      document.getElementById('suggestions-box').classList.add('hidden');
+      hideSuggestions();
+      const raw = input.value.trim();
+      if (!raw) { renderMarkers(allData); clearRoute(); return; }
 
-      if (!rawTerm) {
-        renderMarkers(allData);
-        if (routeLineLayer) {
-          map.removeLayer(routeLineLayer);
-          routeLineLayer = null;
-        }
-        document.getElementById('route-panel').classList.add('hidden');
-        return;
+      let { street, number } = parseQuery(raw);
+      let matches = filterStreet(norm(street));
+      if (!matches.length && number) {          // quizá el número era parte del nombre de la calle
+        matches = filterStreet(norm(raw));
+        number = null;
       }
-      
-      let nombreCalleBuscado = rawTerm;
-      let numeroPuertaBuscado = null;
+      if (!matches.length) { alert('No se encontró ninguna calle con ese nombre.'); return; }
 
-      // Detectar número al final
-      const partes = rawTerm.split(/[\s,]+/);
-      const posibleNumero = partes[partes.length - 1];
-      
-      if (!isNaN(posibleNumero) && posibleNumero.length > 0 && partes.length > 1) {
-        numeroPuertaBuscado = posibleNumero;
-        partes.pop();
-        nombreCalleBuscado = partes.join(' ');
-      }
+      // 1) Si hay número y existe, ese es el destino
+      let dest = number ? matches.find(r => String(r.num_puerta).trim() === number) : null;
 
-      // 1. Intentar buscar por COINCIDENCIA EXACTA del nombre de la calle para evitar confusiones parciales
-      let coincidenciasCalle = allData.filter(row => {
-        const via = (row.nombre_via || '').toLowerCase();
-        return via === nombreCalleBuscado.toLowerCase();
-      });
-
-      // 2. Si no hay coincidencia exacta, usar includes como respaldo flexible
-      if (coincidenciasCalle.length === 0) {
-        coincidenciasCalle = allData.filter(row => {
-          const via = (row.nombre_via || '').toLowerCase();
-          return via.includes(nombreCalleBuscado.toLowerCase());
-        });
-      }
-
-      if (coincidenciasCalle.length === 0) {
-        alert("No se encontró ninguna calle con ese nombre.");
-        return;
-      }
-
-      let destinoFinal = null;
-
-      // Si hay número de puerta específico, buscar coincidencia exacta de número
-      if (numeroPuertaBuscado) {
-        destinoFinal = coincidenciasCalle.find(row => String(row.num_puerta) === String(numeroPuertaBuscado));
-      }
-
-      // Si no hay número, calcular el punto más cercano al usuario usando el GPS actual
-      if (!destinoFinal) {
-        if (!userCoords || userCoords.length !== 2) {
-          destinoFinal = coincidenciasCalle[0];
-        } else {
-          let menorDistancia = Infinity;
-          coincidenciasCalle.forEach(row => {
-            const distancia = calcularDistanciaMetros(userCoords[0], userCoords[1], row.latitud, row.longitud);
-            if (distancia < menorDistancia) {
-              menorDistancia = distancia;
-              destinoFinal = row;
-            }
-          });
+      // 2) Si no hay número (o no existe), el punto de esa calle más cercano al usuario
+      if (!dest) {
+        let min = Infinity;
+        for (const r of matches) {
+          const d = distanciaMetros(userCoords[0], userCoords[1], r.lat, r.lon);
+          if (d < min) { min = d; dest = r; }
         }
       }
 
-      // Renderizar en el mapa las coincidencias encontradas
-      renderMarkers(coincidenciasCalle);
-
-      // Trazar ruta hacia el destino determinado
-      if (destinoFinal) {
-        const lat = parseFloat(destinoFinal.latitud);
-        const lon = parseFloat(destinoFinal.longitud);
-        if (!isNaN(lat) && !isNaN(lon)) {
-          calculateWalkingRoute(lat, lon, `${destinoFinal.nombre_via || 'Destino'} #${destinoFinal.num_puerta || ''}`);
-        }
-      } else {
-        alert("No se pudo determinar un punto de destino válido.");
-      }
+      renderMarkers(matches);
+      calculateWalkingRoute(dest.lat, dest.lon, `${dest.via} #${dest.num_puerta || 's/n'}`);
     }
 
-    function calcularDistanciaMetros(lat1, lon1, lat2, lon2) {
-      const R = 6371e3;
-      const dLat = (lat2 - lat1) * Math.PI / 180;
-      const dLon = (lon2 - lon1) * Math.PI / 180;
-      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                Math.sin(dLon/2) * Math.sin(dLon/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      return R * c;
-    }
-
-    document.getElementById('btn-clear-route').addEventListener('click', () => {
-      if (routeLineLayer) {
-        map.removeLayer(routeLineLayer);
-        routeLineLayer = null;
-      }
-      document.getElementById('route-panel').classList.add('hidden');
-    });
-
-    document.getElementById('btn-gps').addEventListener('click', () => getGPSLocation(true));
-    document.getElementById('btn-search').addEventListener('click', performSearch);
-    document.getElementById('search-input').addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') performSearch();
-    });
-
-    document.getElementById('file-input').addEventListener('change', (e) => {
+    // ---------- Eventos ----------
+    $('btn-clear-route').addEventListener('click', clearRoute);
+    $('btn-gps').addEventListener('click', () => getGPSLocation(true));
+    $('btn-search').addEventListener('click', () => { input.blur(); performSearch(); });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); performSearch(); } });
+    $('file-input').addEventListener('change', e => {
       const file = e.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (evt) => processCSVData(evt.target.result, file.name);
-        reader.readAsText(file);
-      }
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = evt => processCSVData(evt.target.result, file.name);
+      reader.readAsText(file);
     });
 
     window.onload = initMap;
